@@ -7,6 +7,10 @@
 # Not part of the image
 tests/
 docs/
+deploy/
+.github/
+.git/
+.gitignore
 *.sln
 *.md
 Dockerfile
