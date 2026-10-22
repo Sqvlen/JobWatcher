@@ -1,0 +1,98 @@
+{
+  "_synthetic": "SYNTHETIC FIXTURE, NOT A CAPTURED RESPONSE. Built by hand from the field names of the official Jooble REST API documentation (see docs/sources/jooble.md); the vacancies, companies and ids are made up. Replace it with a real response once a Jooble API key is available.",
+  "totalCount": 41,
+  "jobs": [
+    {
+      "id": 6402917753301214820,
+      "title": "Senior .NET Developer",
+      "location": "Київ",
+      "snippet": "Ми шукаємо досвідченого&nbsp;<b>.NET</b>&nbsp;розробника в команду продукту. Вимоги: 5+ років досвіду з <b>C#</b>, ASP.NET Core, SQL Server &amp; Azure. Ми пропонуємо ...",
+      "salary": "4,000 - 5,500 USD",
+      "source": "jooble",
+      "type": "Full-time",
+      "link": "https://ua.jooble.org/jdp/6402917753301214820",
+      "company": "Northwind Software",
+      "updated": "2026-10-20T09:14:22.1330000"
+    },
+    {
+      "id": -3735906425358868903,
+      "title": "Middle .NET Developer (remote)",
+      "location": "Remote",
+      "snippet": "Join a distributed product team building a logistics platform on .NET 8 and Azure. Fully remote, flexible hours, a 3 year old codebase with good test coverage ...",
+      "salary": "",
+      "source": "jooble",
+      "type": "Full-time",
+      "link": "https://ua.jooble.org/jdp/-3735906425358868903",
+      "company": "Contoso Labs",
+      "updated": "2026-10-19T16:02:41.0070000"
+    },
+    {
+      "id": 1154820937462018775,
+      "title": "Backend Developer (C#)",
+      "location": "Remote, Europe",
+      "snippet": "Remote position open to candidates living in Europe. You will design REST APIs in C# and ASP.NET Core and take part in code reviews ...",
+      "salary": "3,500 - 4,500 EUR",
+      "source": "work.ua",
+      "type": "Full-time",
+      "link": "https://ua.jooble.org/jdp/1154820937462018775",
+      "company": "Fabrikam Systems",
+      "updated": "2026-10-21T07:45:10.5200000"
+    },
+    {
+      "id": 8827301945560112934,
+      "title": "Junior .NET Developer",
+      "location": "Львів",
+      "snippet": "Перша робота у <b>.NET</b>? Навчимо та дамо реальні задачі на C# під керівництвом менторів. Офіс у центрі міста ...",
+      "salary": "25 000 - 35 000 UAH",
+      "source": "dou.ua",
+      "type": "Full-time",
+      "link": "https://ua.jooble.org/jdp/8827301945560112934",
+      "company": "ТОВ «Софт Плюс»",
+      "updated": "2026-10-18T11:30:00.0000000"
+    },
+    {
+      "id": 2290174465830091273,
+      "title": ".NET розробник (віддалено)",
+      "location": "Україна",
+      "snippet": "Шукаємо розробника на C# / <b>.NET</b> для роботи над платіжним сервісом. Повністю віддалена робота, гнучкий графік ...",
+      "salary": "від 60 000 грн",
+      "source": "jooble",
+      "type": "Повна зайнятість",
+      "link": "https://ua.jooble.org/jdp/2290174465830091273",
+      "company": "Тест-Компані",
+      "updated": "2026-10-21T12:00:03.2500000"
+    },
+    {
+      "id": 5517203388914402561,
+      "title": "Software Engineer (.NET)",
+      "location": "Poland",
+      "snippet": "Engineering role in a product company, working with .NET, Kafka and PostgreSQL. Work from anywhere in Poland ...",
+      "salary": "$3,000 - $4,000 per month",
+      "source": "jooble",
+      "type": "Remote",
+      "link": "https://ua.jooble.org/jdp/5517203388914402561",
+      "company": "Adventure Works",
+      "updated": "2026-10-17T08:21:57.8800000"
+    },
+    {
+      "id": 7036641128894556102,
+      "title": ".NET Developer",
+      "location": "Київ",
+      "snippet": "Developer for an internal tooling team; C#, WPF and a bit of SQL ...",
+      "source": "jooble",
+      "link": "https://ua.jooble.org/jdp/7036641128894556102"
+    },
+    {
+      "id": 4410298376601113847,
+      "title": ".NET Backend Engineer",
+      "location": "",
+      "snippet": "Backend engineer for a fintech startup. The location is agreed with the candidate ...",
+      "salary": "17,600 UAH",
+      "source": "jooble",
+      "type": "Full-time",
+      "link": "https://ua.jooble.org/jdp/4410298376601113847",
+      "company": "Litware Finance",
+      "updated": "2026-10-16T14:05:09.4100000"
+    }
+  ]
+}

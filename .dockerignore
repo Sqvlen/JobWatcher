@@ -1,0 +1,33 @@
+# Keep the build context to what the image needs: the project sources (src/JobWatcher).
+
+# Build output (the image builds its own)
+**/bin/
+**/obj/
+
+# Not part of the image
+tests/
+docs/
+*.sln
+*.md
+Dockerfile
+.dockerignore
+
+# IDE and tool folders
+.idea/
+.remember/
+.vs/
+.vscode/
+**/*.user
+
+# Local state: the seen-vacancies database must never be baked into an image
+**/data/
+**/*.db
+**/*.db-*
+
+# Secrets: environment files and machine-specific settings (appsettings.json itself is kept;
+# it holds only the empty defaults, and the secrets come from environment variables)
+**/.env
+**/.env.*
+**/*.env
+**/appsettings.*.json
+**/secrets.json
