@@ -67,6 +67,8 @@ public sealed class SourcesOptions
 
     public DjinniOptions Djinni { get; set; } = new();
 
+    public JobsPipeOptions JobsPipe { get; set; } = new();
+
     /// <summary>
     /// LinkedIn has no lawful access route (docs/sources/linkedin.md), so enabling it only registers a stand-in
     /// that tells the user once that the source is not connected.
@@ -122,4 +124,37 @@ public sealed class JoobleOptions : ToggleOptions
     /// counting towards the "source is down" alert).
     /// </summary>
     public int MinFetchIntervalMinutes { get; set; } = 720;
+}
+
+public sealed class JobsPipeOptions : ToggleOptions
+{
+    /// <summary>The JobsPipe API key (it starts with <c>jp_live_</c>), sent as a bearer token.</summary>
+    public string ApiKey { get; set; } = "";
+
+    /// <summary>The JobsPipe API address; the search path is appended to it.</summary>
+    public string BaseUrl { get; set; } = "https://api.jobspipe.dev";
+
+    /// <summary>
+    /// The least time between two real searches. Until this many minutes have passed the source makes no request: it
+    /// answers with an empty list when the last search succeeded, and throws the last failure again when it failed (so
+    /// the failure keeps counting towards the "source is down" alert). A search is paid per vacancy that the key has not
+    /// received this month, not per request, but the plan also has a monthly request quota that the docs do not number.
+    /// </summary>
+    public int MinFetchIntervalMinutes { get; set; } = 60;
+
+    /// <summary>Only vacancies posted within this many days are asked for.</summary>
+    public int MaxAgeDays { get; set; } = 14;
+
+    /// <summary>
+    /// How many vacancies one search asks for (the newest first). The plan caps it: 25 on the free plan, so a larger
+    /// value is cut down by JobsPipe, not refused.
+    /// </summary>
+    public int PageSize { get; set; } = 25;
+
+    /// <summary>
+    /// The JobsPipe boards whose vacancies are left out (its <c>source_not</c> filter); their names are JobsPipe's
+    /// ("linkedin", "indeed", "greenhouse", ...). The default list lives in appsettings.json, not here, because the
+    /// configuration binder appends configured values to a pre-filled array.
+    /// </summary>
+    public string[] ExcludedSources { get; set; } = [];
 }

@@ -156,6 +156,10 @@ public static partial class RequirementsExtractor
     [GeneratedRegex(@"^(?:[•·●▪‣◦○]\s*|[-–—*]\s+)")]
     private static partial Regex BulletMarker();
 
+    // A dash or asterisk that is the whole line: BulletMarker needs text after it, so it does not match this.
+    [GeneratedRegex(@"^[-–—*]$")]
+    private static partial Regex LoneDash();
+
     private enum HeadingKind
     {
         None,
@@ -172,6 +176,7 @@ public static partial class RequirementsExtractor
         private readonly List<Line> lines = [];
         private readonly StringBuilder text = new();
         private bool inBullet;
+        private bool markerPending;
         private bool inHeadingTag;
         private int boldDepth;
         private int boldLetters;
@@ -289,18 +294,32 @@ public static partial class RequirementsExtractor
         private void EndLine()
         {
             var value = Whitespace().Replace(text.ToString(), " ").Trim();
-            var isBullet = inBullet;
+            var isBullet = inBullet || markerPending;
             var isEmphasised = inHeadingTag || (boldLetters > 0 && otherLetters == 0);
 
+            var markerOnly = false;
             if (BulletMarker().Match(value) is { Success: true } marker)
             {
                 value = value[marker.Length..].Trim();
                 isBullet = true;
+                markerOnly = value.Length == 0;
+            }
+            else if (LoneDash().IsMatch(value))
+            {
+                value = "";
+                isBullet = true;
+                markerOnly = true;
             }
 
             if (value.Length > 0)
             {
                 lines.Add(new Line(value, isBullet, isEmphasised));
+                markerPending = false;
+            }
+            else if (markerOnly)
+            {
+                // Some sources put the marker on a line of its own; the text of the item is the next line.
+                markerPending = true;
             }
 
             text.Clear();

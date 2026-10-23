@@ -234,6 +234,7 @@ public class WatcherOptionsValidatorTests
         AssertFailedNaming(result, "JobWatcher__Sources__Dou__Enabled");
         AssertFailedNaming(result, "JobWatcher__Sources__Jooble__Enabled");
         AssertFailedNaming(result, "JobWatcher__Sources__Djinni__Enabled");
+        AssertFailedNaming(result, "JobWatcher__Sources__JobsPipe__Enabled");
 
         // LinkedIn watches nothing, so enabling it is not offered as a fix.
         Assert.DoesNotContain(result.Failures!, failure => failure.Contains("JobWatcher__Sources__LinkedIn__Enabled"));
@@ -351,6 +352,156 @@ public class WatcherOptionsValidatorTests
         options.Sources.Jooble.ApiKey = "";
         options.Sources.Jooble.BaseUrl = "";
         options.Sources.Jooble.MinFetchIntervalMinutes = 0;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    private static WatcherOptions JobsPipeConfig()
+    {
+        var options = CompleteConfig();
+        options.Sources.JobsPipe.Enabled = true;
+        options.Sources.JobsPipe.ApiKey = "jobspipe-key";
+
+        return options;
+    }
+
+    [Fact]
+    public void Validate_accepts_a_complete_jobspipe_configuration()
+    {
+        var result = Validator.Validate(null, JobsPipeConfig());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Validate_fails_when_jobspipe_enabled_without_api_key(string apiKey)
+    {
+        var options = JobsPipeConfig();
+        options.Sources.JobsPipe.ApiKey = apiKey;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Contains(
+            "JobsPipe is enabled but its API key is not set. Set the environment variable JobWatcher__Sources__JobsPipe__ApiKey (or the Key Vault secret JobWatcher--Sources--JobsPipe--ApiKey), or disable it with JobWatcher__Sources__JobsPipe__Enabled=false.",
+            result.Failures!);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("api.jobspipe.dev")]
+    [InlineData("not a url")]
+    [InlineData("http://api.jobspipe.dev")]
+    [InlineData("file:///etc/passwd")]
+    public void Validate_fails_when_jobspipe_enabled_without_an_absolute_https_base_url(string baseUrl)
+    {
+        var options = JobsPipeConfig();
+        options.Sources.JobsPipe.BaseUrl = baseUrl;
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__JobsPipe__BaseUrl");
+    }
+
+    [Theory]
+    [InlineData("https://api.jobspipe.dev?x=1")]
+    [InlineData("https://api.jobspipe.dev#top")]
+    public void Validate_fails_when_jobspipe_base_url_has_a_query_or_fragment(string baseUrl)
+    {
+        var options = JobsPipeConfig();
+        options.Sources.JobsPipe.BaseUrl = baseUrl;
+
+        var result = Validator.Validate(null, options);
+
+        var failure = Assert.Single(result.Failures!);
+        Assert.Contains("JobWatcher__Sources__JobsPipe__BaseUrl", failure);
+        Assert.Contains("query", failure);
+    }
+
+    [Theory]
+    [InlineData("https://api.jobspipe.dev")]
+    [InlineData("https://api.jobspipe.dev/")]
+    public void Validate_accepts_an_absolute_https_jobspipe_base_url(string baseUrl)
+    {
+        var options = JobsPipeConfig();
+        options.Sources.JobsPipe.BaseUrl = baseUrl;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Theory]
+    [InlineData(nameof(JobsPipeOptions.MinFetchIntervalMinutes), 0)]
+    [InlineData(nameof(JobsPipeOptions.MinFetchIntervalMinutes), -1)]
+    [InlineData(nameof(JobsPipeOptions.MaxAgeDays), 0)]
+    [InlineData(nameof(JobsPipeOptions.MaxAgeDays), -3)]
+    [InlineData(nameof(JobsPipeOptions.PageSize), 0)]
+    [InlineData(nameof(JobsPipeOptions.PageSize), 501)]
+    public void Validate_fails_when_a_jobspipe_number_is_out_of_range(string setting, int value)
+    {
+        var options = JobsPipeConfig();
+        typeof(JobsPipeOptions).GetProperty(setting)!.SetValue(options.Sources.JobsPipe, value);
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, $"JobWatcher__Sources__JobsPipe__{setting}");
+    }
+
+    [Theory]
+    [InlineData(nameof(JobsPipeOptions.MinFetchIntervalMinutes), 1)]
+    [InlineData(nameof(JobsPipeOptions.MaxAgeDays), 1)]
+    [InlineData(nameof(JobsPipeOptions.PageSize), 1)]
+    [InlineData(nameof(JobsPipeOptions.PageSize), 500)]
+    public void Validate_accepts_the_edges_of_the_jobspipe_number_ranges(string setting, int value)
+    {
+        var options = JobsPipeConfig();
+        typeof(JobsPipeOptions).GetProperty(setting)!.SetValue(options.Sources.JobsPipe, value);
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_fails_when_an_excluded_jobspipe_source_is_blank()
+    {
+        var options = JobsPipeConfig();
+        options.Sources.JobsPipe.ExcludedSources = ["linkedin", " "];
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__JobsPipe__ExcludedSources__1");
+    }
+
+    [Fact]
+    public void Validate_does_not_check_the_jobspipe_settings_when_jobspipe_is_disabled()
+    {
+        var options = CompleteConfig();
+        options.Sources.JobsPipe.Enabled = false;
+        options.Sources.JobsPipe.ApiKey = "";
+        options.Sources.JobsPipe.BaseUrl = "";
+        options.Sources.JobsPipe.MinFetchIntervalMinutes = 0;
+        options.Sources.JobsPipe.MaxAgeDays = 0;
+        options.Sources.JobsPipe.PageSize = 0;
+        options.Sources.JobsPipe.ExcludedSources = [""];
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_counts_jobspipe_as_an_enabled_source()
+    {
+        var options = JobsPipeConfig();
+        options.Sources.Dou.Enabled = false;
+        options.Sources.Jooble.Enabled = false;
+        options.Sources.Djinni.Enabled = false;
+        options.Sources.LinkedIn.Enabled = false;
 
         var result = Validator.Validate(null, options);
 

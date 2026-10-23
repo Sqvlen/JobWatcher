@@ -28,6 +28,7 @@ public sealed class CompositionTests
     private const string BotToken = "123456:TOKEN-SECRET-VALUE";
     private const string TokenSecret = "TOKEN-SECRET-VALUE";
     private const string JoobleKey = "JOOBLE-SECRET-KEY-VALUE";
+    private const string JobsPipeKey = "JOBSPIPE-SECRET-KEY-VALUE";
     private const string ChatId = "-100500";
 
     // The names the typed HttpClients are registered under (the type name), used to replace their primary handlers.
@@ -35,6 +36,7 @@ public sealed class CompositionTests
     private const string DouClient = nameof(DouRssSource);
     private const string JoobleClient = nameof(JoobleSource);
     private const string DjinniClient = nameof(DjinniSource);
+    private const string JobsPipeClient = nameof(JobsPipeSource);
 
     private static readonly string DouFixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "dou-dotnet.xml");
     private static readonly string DjinniFixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "djinni-dotnet.xml");
@@ -522,6 +524,143 @@ public sealed class CompositionTests
         Assert.Contains("Jooble: no request this time, the next one is due after ", skip.Text);
         Assert.Contains("(MinFetchIntervalMinutes=720)", skip.Text);
         Assert.DoesNotContain(recorder.Entries, entry => entry.Text.Contains(JoobleKey));
+    }
+
+    // ---- JobsPipe ----
+
+    // Only JobsPipe is on: its key is the secret the log test looks for.
+    private static Dictionary<string, string?> WithJobsPipe(string dataDir)
+    {
+        var settings = WithSources(dataDir, dou: false, jooble: false);
+        settings["JobWatcher:Sources:JobsPipe:Enabled"] = "true";
+        settings["JobWatcher:Sources:JobsPipe:ApiKey"] = JobsPipeKey;
+
+        return settings;
+    }
+
+    [Fact]
+    public async Task JobsPipe_enabled_is_registered_as_one_source_instance()
+    {
+        await using var provider = BuildProvider(WithJobsPipe(NewTempDir()));
+
+        var source = Assert.Single(provider.GetServices<IVacancySource>());
+
+        Assert.IsType<JobsPipeSource>(source);
+        Assert.Equal(VacancySource.JobsPipe, source.Source);
+        // The source remembers when it last searched, to protect the quota of the key, so every cycle must get the same one.
+        Assert.Same(source, Assert.Single(provider.GetServices<IVacancySource>()));
+    }
+
+    [Fact]
+    public async Task JobsPipe_is_off_unless_it_is_switched_on()
+    {
+        // The shipped appsettings.json keeps it off: it needs the user's own key.
+        await using var provider = BuildProvider(WithSources(NewTempDir(), dou: true, jooble: false, djinni: true));
+
+        Assert.Null(provider.GetService<JobsPipeSource>());
+        Assert.DoesNotContain(provider.GetServices<IVacancySource>(), source => source.Source == VacancySource.JobsPipe);
+    }
+
+    [Fact]
+    public async Task The_jobspipe_client_has_a_30_second_timeout()
+    {
+        await using var provider = BuildProvider(WithJobsPipe(NewTempDir()));
+
+        Assert.Equal(TimeSpan.FromSeconds(30), provider.GetRequiredService<IHttpClientFactory>().CreateClient(JobsPipeClient).Timeout);
+    }
+
+    [Fact]
+    public async Task Request_logs_never_contain_the_jobspipe_key()
+    {
+        var recorder = new RecordingLoggerProvider();
+        string? authorization = null;
+        var jobsPipe = new StubHandler(request =>
+        {
+            authorization = request.Headers.Authorization?.ToString();
+
+            return Json("""{"data":[]}""");
+        });
+        await using var provider = BuildProvider(WithJobsPipe(NewTempDir()), services =>
+        {
+            services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(recorder));
+            ReplacePrimaryHandler(services, JobsPipeClient, jobsPipe);
+        });
+
+        await provider.GetRequiredService<JobsPipeSource>().FetchAsync(CancellationToken.None);
+
+        // Guards against a vacuous pass: the key really travelled, in the header and not in the address ...
+        Assert.Equal($"Bearer {JobsPipeKey}", authorization);
+        Assert.DoesNotContain(JobsPipeKey, Assert.Single(jobsPipe.Requests).Url);
+        // ... and the recorder does see the HTTP logs of this client (its default logging stays on: no secret is in the URL).
+        Assert.Contains(
+            recorder.Entries,
+            entry => entry.Category.Contains(JobsPipeClient) && entry.Text.Contains("api.jobspipe.dev"));
+
+        Assert.DoesNotContain(recorder.Entries, entry => entry.Text.Contains(JobsPipeKey));
+    }
+
+    [Fact]
+    public async Task End_to_end_a_new_jobspipe_vacancy_is_announced_once_with_its_requirements()
+    {
+        const string baseline = """{"id":"old-1","job_title":"Old .NET job","company":"Old Co","url":"https://example.test/old","remote":true}""";
+        const string fresh = """
+            {"id":"new-1","job_title":"Quantum Ledger .NET Engineer","company":"Quantum Ledger","location":"Berlin, Germany",
+             "country_code":"DE","country":"Germany","remote":true,"url":"https://example.test/jobs/new-1","salary_string":"€70K - €90K a year",
+             "description":"We build ledgers.\n\nRequirements\n\n- 4+ years of C# and .NET.\n\n- Experience with PostgreSQL.\n\nBenefits\n\n- Coffee."}
+            """;
+        var dataDir = NewTempDir();
+        try
+        {
+            var telegram = TelegramAccepting();
+            var response = $$"""{"data":[{{baseline}}]}""";
+            var jobsPipe = new StubHandler(() => Json(response));
+            // The source's clock: the interval between two searches is passed on it, not waited for.
+            var clock = new ManualTimeProvider();
+            await using var provider = BuildProvider(WithJobsPipe(dataDir), services =>
+            {
+                ReplacePrimaryHandler(services, TelegramClient, telegram);
+                ReplacePrimaryHandler(services, JobsPipeClient, jobsPipe);
+                services.AddSingleton<TimeProvider>(clock);
+            });
+            var cycle = provider.GetRequiredService<IWatchCycle>();
+
+            // Cycle 1: the existing vacancy is only remembered; the user gets nothing.
+            await cycle.RunOnceAsync(CancellationToken.None);
+            Assert.Empty(telegram.Requests);
+
+            // Cycle 2, after the interval: JobsPipe lists one more vacancy.
+            clock.Advance(TimeSpan.FromMinutes(60));
+            response = $$"""{"data":[{{fresh}},{{baseline}}]}""";
+            await cycle.RunOnceAsync(CancellationToken.None);
+            var sent = Assert.Single(telegram.Requests);
+            using var body = JsonDocument.Parse(sent.Body);
+            var text = body.RootElement.GetProperty("text").GetString()!;
+            Assert.Equal(
+                string.Join(
+                    '\n',
+                    "🆕 <b>Quantum Ledger .NET Engineer</b>",
+                    "🏢 Quantum Ledger",
+                    "💰 €70K - €90K a year",
+                    "📍 Berlin, Germany · Remote",
+                    "",
+                    "📋 Вимоги:",
+                    "• 4+ years of C# and .NET.",
+                    "• Experience with PostgreSQL.",
+                    "",
+                    "🔗 <a href=\"https://example.test/jobs/new-1\">Відкрити вакансію (JobsPipe)</a>"),
+                text);
+
+            // Cycle 3, after the interval: the same answer again; the vacancy was recorded after it was sent.
+            clock.Advance(TimeSpan.FromMinutes(60));
+            await cycle.RunOnceAsync(CancellationToken.None);
+            Assert.Single(telegram.Requests);
+            Assert.Equal(3, jobsPipe.Requests.Count);
+            Assert.True(await provider.GetRequiredService<ISeenStore>().ContainsAsync(VacancySource.JobsPipe, "new-1", CancellationToken.None));
+        }
+        finally
+        {
+            DeleteIfExists(dataDir);
+        }
     }
 
     // ---- end to end ----

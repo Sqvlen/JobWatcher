@@ -13,6 +13,9 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
     // (see docs/sources/djinni.md), so it is polled no more often than DOU.
     private const int FeedPollFloorMinutes = 10;
 
+    // The page size of JobsPipe's largest plan; a free key is capped at 25, which JobsPipe does by itself.
+    private const int MaxJobsPipePageSize = 500;
+
     public ValidateOptionsResult Validate(string? name, WatcherOptions o)
     {
         var failures = new List<string>();
@@ -91,9 +94,9 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
 
         // LinkedIn counts as enabled but is not offered as a fix: it only reports that it is not connected.
         var sources = o.Sources;
-        if (!sources.Dou.Enabled && !sources.Jooble.Enabled && !sources.Djinni.Enabled && !sources.LinkedIn.Enabled)
+        if (!sources.Dou.Enabled && !sources.Jooble.Enabled && !sources.Djinni.Enabled && !sources.JobsPipe.Enabled && !sources.LinkedIn.Enabled)
         {
-            failures.Add("No job source is enabled. Set at least one of JobWatcher__Sources__Dou__Enabled, JobWatcher__Sources__Jooble__Enabled, JobWatcher__Sources__Djinni__Enabled to true.");
+            failures.Add("No job source is enabled. Set at least one of JobWatcher__Sources__Dou__Enabled, JobWatcher__Sources__Jooble__Enabled, JobWatcher__Sources__Djinni__Enabled, JobWatcher__Sources__JobsPipe__Enabled to true.");
         }
 
         if (sources.Dou.Enabled && !IsAbsoluteHttpUrl(sources.Dou.FeedUrl))
@@ -137,7 +140,49 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
             failures.Add($"Jooble minimum fetch interval must be at least 1 minute (got {sources.Jooble.MinFetchIntervalMinutes}). Fix the environment variable JobWatcher__Sources__Jooble__MinFetchIntervalMinutes.");
         }
 
+        AddJobsPipeFailures(failures, sources.JobsPipe);
+
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private static void AddJobsPipeFailures(List<string> failures, JobsPipeOptions jobsPipe)
+    {
+        if (!jobsPipe.Enabled)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(jobsPipe.ApiKey))
+        {
+            failures.Add("JobsPipe is enabled but its API key is not set. Set the environment variable JobWatcher__Sources__JobsPipe__ApiKey (or the Key Vault secret JobWatcher--Sources--JobsPipe--ApiKey), or disable it with JobWatcher__Sources__JobsPipe__Enabled=false.");
+        }
+
+        // The key travels in a header, so the connection must be encrypted; the search path is appended to the address.
+        if (!IsAbsoluteHttpsUrl(jobsPipe.BaseUrl))
+        {
+            failures.Add("JobsPipe is enabled but its base URL is not an absolute https URL. Set the environment variable JobWatcher__Sources__JobsPipe__BaseUrl (for example https://api.jobspipe.dev).");
+        }
+        else if (jobsPipe.BaseUrl.IndexOfAny(['?', '#']) >= 0)
+        {
+            failures.Add("JobsPipe base URL must not have a query string or a fragment ('?' or '#'), because the search path is appended to it. Fix the environment variable JobWatcher__Sources__JobsPipe__BaseUrl (for example https://api.jobspipe.dev).");
+        }
+
+        if (jobsPipe.MinFetchIntervalMinutes < 1)
+        {
+            failures.Add($"JobsPipe minimum fetch interval must be at least 1 minute (got {jobsPipe.MinFetchIntervalMinutes}). Fix the environment variable JobWatcher__Sources__JobsPipe__MinFetchIntervalMinutes.");
+        }
+
+        if (jobsPipe.MaxAgeDays < 1)
+        {
+            failures.Add($"JobsPipe maximum vacancy age must be at least 1 day (got {jobsPipe.MaxAgeDays}). Fix the environment variable JobWatcher__Sources__JobsPipe__MaxAgeDays.");
+        }
+
+        if (jobsPipe.PageSize is < 1 or > MaxJobsPipePageSize)
+        {
+            failures.Add($"JobsPipe page size must be between 1 and {MaxJobsPipePageSize} (got {jobsPipe.PageSize}); the largest plan allows {MaxJobsPipePageSize} vacancies per search. Fix the environment variable JobWatcher__Sources__JobsPipe__PageSize.");
+        }
+
+        AddBlankEntryFailures(failures, jobsPipe.ExcludedSources, "JobWatcher__Sources__JobsPipe__ExcludedSources");
     }
 
     // On Unix a path such as "/vacancies/feeds/" parses as an absolute file URI, hence the scheme check.

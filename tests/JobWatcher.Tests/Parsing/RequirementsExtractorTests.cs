@@ -152,6 +152,32 @@ public class RequirementsExtractorTests
         Assert.Equal(["Знання C#", "Досвід з SQL", "Англійська B2"], items);
     }
 
+    // Real descriptions that came through JobsPipe from Himalayas look like this: the marker is a line of its own and
+    // the text of the item follows on the next line.
+    [Theory]
+    [InlineData("-")]
+    [InlineData("•")]
+    [InlineData("·")]
+    [InlineData("●")]
+    public void A_bullet_marker_alone_on_its_line_makes_the_next_line_a_bullet(string marker)
+    {
+        var text = $"About the role\n\nBasic Qualifications:\n\n{marker}\nMinimum 8+ years of C#.\n\n{marker}\nExperience with SQL Server.\n\nNice to Have:\n\n{marker}\nBlazor";
+
+        var items = RequirementsExtractor.Extract(text);
+
+        Assert.Equal(["Minimum 8+ years of C#.", "Experience with SQL Server."], items);
+    }
+
+    [Fact]
+    public void A_marker_alone_before_the_heading_or_at_the_end_adds_nothing()
+    {
+        const string text = "-\nAbout us\n\nRequirements:\n\n-\nStrong C#\n\n-";
+
+        var items = RequirementsExtractor.Extract(text);
+
+        Assert.Equal(["Strong C#"], items);
+    }
+
     [Fact]
     public void Bullets_separated_by_line_breaks_inside_a_paragraph_are_split()
     {

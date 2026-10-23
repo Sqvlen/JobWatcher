@@ -97,6 +97,15 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IVacancySource>(sp => sp.GetRequiredService<DjinniSource>());
         }
 
+        // The JobsPipe key travels in a header, which the default HTTP logging redacts, and the address carries no secret,
+        // so the default logging stays on, as for DOU and Djinni. A single instance: it remembers when it last searched,
+        // to keep within the quota of the key.
+        if (sources.JobsPipe.Enabled)
+        {
+            services.AddHttpClient<JobsPipeSource>(client => client.Timeout = HttpTimeout);
+            services.AddSingleton<IVacancySource>(sp => sp.GetRequiredService<JobsPipeSource>());
+        }
+
         // LinkedIn has no route that is lawful without the customer's own account (docs/sources/linkedin.md), so there
         // is no adapter. Enabling it registers a stand-in that makes every cycle report "not connected", so the user
         // is told once in Telegram instead of the setting doing nothing.

@@ -44,6 +44,14 @@ public class ShippedDefaultsTests
         Assert.Equal("2", configuration["JobWatcher:Sources:Djinni:PageRequestDelaySeconds"]);
         Assert.Equal("15", configuration["JobWatcher:Sources:Djinni:MaxPagesPerCycle"]);
         Assert.False(options.Sources.LinkedIn.Enabled);
+        Assert.False(options.Sources.JobsPipe.Enabled);
+        Assert.Equal("https://api.jobspipe.dev", options.Sources.JobsPipe.BaseUrl);
+        Assert.Equal(60, options.Sources.JobsPipe.MinFetchIntervalMinutes);
+        Assert.Equal(14, options.Sources.JobsPipe.MaxAgeDays);
+        Assert.Equal(25, options.Sources.JobsPipe.PageSize);
+        // The excluded boards are listed in the file, not in the class: a configured list would otherwise be appended
+        // to a pre-filled array, and the user could never remove LinkedIn from it.
+        Assert.Equal(["linkedin"], options.Sources.JobsPipe.ExcludedSources);
     }
 
     [Fact]
