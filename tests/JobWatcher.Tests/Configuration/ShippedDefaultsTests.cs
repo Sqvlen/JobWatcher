@@ -48,7 +48,9 @@ public class ShippedDefaultsTests
         Assert.Equal("https://api.jobspipe.dev", options.Sources.JobsPipe.BaseUrl);
         // Once a day: the free plan's request quota is not documented, and what a search costs does not depend on how often it runs.
         Assert.Equal(1440, options.Sources.JobsPipe.MinFetchIntervalMinutes);
-        Assert.Equal(14, options.Sources.JobsPipe.MaxAgeDays);
+        // The search runs once a day, so two days is the day it covers plus one for JobsPipe's own daily crawl; a longer window
+        // makes the search slow: 14 days with the four excluded boards ran into JobsPipe's 30 s limit (504), 2 days takes about 6 s.
+        Assert.Equal(2, options.Sources.JobsPipe.MaxAgeDays);
         Assert.Equal(25, options.Sources.JobsPipe.PageSize);
         // The excluded boards are listed in the file, not in the class: a configured list would otherwise be appended
         // to a pre-filled array, and the user could never remove LinkedIn from it. Workday, Greenhouse and Ashby are

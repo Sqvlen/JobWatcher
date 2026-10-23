@@ -146,8 +146,14 @@ public sealed class JobsPipeOptions : ToggleOptions
     /// </summary>
     public int MinFetchIntervalMinutes { get; set; } = 1440;
 
-    /// <summary>Only vacancies posted within this many days are asked for.</summary>
-    public int MaxAgeDays { get; set; } = 14;
+    /// <summary>
+    /// Only vacancies posted within this many days are asked for. Two by default: the search runs once a day, so that is
+    /// the day it covers plus one more, for the vacancies that JobsPipe (which crawls about once a day) lists a day after
+    /// they were posted. Do not make it much longer: the search gets slower with the window, and with the four boards
+    /// excluded by default 14 days ran into JobsPipe's limit of about 30 seconds (504), whereas 2 days takes about 6.
+    /// Vacancies seen before are free and are not announced twice, so a wider window costs time, not credits.
+    /// </summary>
+    public int MaxAgeDays { get; set; } = 2;
 
     /// <summary>
     /// How many vacancies one search asks for (the newest first). The plan caps it: 25 on the free plan, so a larger
