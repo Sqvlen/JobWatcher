@@ -235,6 +235,7 @@ public class WatcherOptionsValidatorTests
         AssertFailedNaming(result, "JobWatcher__Sources__Jooble__Enabled");
         AssertFailedNaming(result, "JobWatcher__Sources__Djinni__Enabled");
         AssertFailedNaming(result, "JobWatcher__Sources__JobsPipe__Enabled");
+        AssertFailedNaming(result, "JobWatcher__Sources__Eleks__Enabled");
 
         // LinkedIn watches nothing, so enabling it is not offered as a fix.
         Assert.DoesNotContain(result.Failures!, failure => failure.Contains("JobWatcher__Sources__LinkedIn__Enabled"));
@@ -870,6 +871,144 @@ public class WatcherOptionsValidatorTests
         options.Sources.Djinni.ReadVacancyPages = readPages;
         options.Sources.Djinni.PageRequestDelaySeconds = 0;
         options.Sources.Djinni.MaxPagesPerCycle = 0;
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+    }
+
+    // ---- Eleks ----
+
+    private const string EleksListUrl = "https://careers.eleks.com/vacancies/?technology=21,27&location=206,98";
+
+    private static WatcherOptions EleksConfig()
+    {
+        var options = CompleteConfig();
+        options.Sources.Eleks.Enabled = true;
+        options.Sources.Eleks.ListUrl = EleksListUrl;
+
+        return options;
+    }
+
+    [Fact]
+    public void Validate_accepts_a_complete_eleks_configuration()
+    {
+        Assert.True(Validator.Validate(null, EleksConfig()).Succeeded);
+    }
+
+    // The customer asked for Eleks once a day, not every 15 minutes like the feeds.
+    [Fact]
+    public void Eleks_is_asked_once_a_day_by_default()
+    {
+        Assert.Equal(TimeSpan.FromDays(1), TimeSpan.FromMinutes(new EleksOptions().MinFetchIntervalMinutes));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("careers.eleks.com/vacancies/")]
+    [InlineData("not a url")]
+    [InlineData("http://careers.eleks.com/vacancies/")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("https://example.com/vacancies/")]
+    [InlineData("https://careers.eleks.com.evil.test/vacancies/")]
+    public void Validate_fails_when_eleks_enabled_without_an_https_list_url_on_careers_eleks_com(string listUrl)
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.ListUrl = listUrl;
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__Eleks__ListUrl");
+        var failure = Assert.Single(result.Failures!);
+        Assert.Contains("JobWatcher__Sources__Eleks__Enabled=false", failure);
+    }
+
+    [Theory]
+    [InlineData("https://careers.eleks.com/vacancies/")]
+    [InlineData("https://careers.eleks.com/vacancies/?technology=21,27&location=206,98")]
+    [InlineData("https://careers.eleks.com/vacancies/?f=1de4c0dd4f76e3e13dce7c6540315710")]
+    public void Validate_accepts_an_https_list_url_on_careers_eleks_com(string listUrl)
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.ListUrl = listUrl;
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_fails_when_the_eleks_fetch_interval_is_below_1_minute(int minutes)
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.MinFetchIntervalMinutes = minutes;
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__Eleks__MinFetchIntervalMinutes");
+        Assert.Single(result.Failures!);
+    }
+
+    // The list is requested page by page too, so the gap matters whether or not vacancy pages are read.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(-1, true)]
+    [InlineData(0, false)]
+    public void Validate_fails_when_the_eleks_request_delay_is_below_1_second(int seconds, bool readPages)
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.ReadVacancyPages = readPages;
+        options.Sources.Eleks.PageRequestDelaySeconds = seconds;
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__Eleks__PageRequestDelaySeconds");
+        Assert.Single(result.Failures!);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public void Validate_fails_when_eleks_reads_pages_with_max_pages_per_cycle_below_1(int pages)
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.MaxPagesPerCycle = pages;
+
+        var result = Validator.Validate(null, options);
+
+        AssertFailedNaming(result, "JobWatcher__Sources__Eleks__MaxPagesPerCycle");
+        var failure = Assert.Single(result.Failures!);
+        Assert.Contains("JobWatcher__Sources__Eleks__ReadVacancyPages=false", failure);
+    }
+
+    [Fact]
+    public void Validate_does_not_check_eleks_max_pages_per_cycle_when_vacancy_pages_are_not_read()
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.ReadVacancyPages = false;
+        options.Sources.Eleks.MaxPagesPerCycle = 0;
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+    }
+
+    [Fact]
+    public void Validate_does_not_check_the_eleks_settings_while_eleks_is_off()
+    {
+        var options = EleksConfig();
+        options.Sources.Eleks.Enabled = false;
+        options.Sources.Eleks.ListUrl = "";
+        options.Sources.Eleks.MinFetchIntervalMinutes = 0;
+        options.Sources.Eleks.PageRequestDelaySeconds = 0;
+        options.Sources.Eleks.MaxPagesPerCycle = 0;
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+    }
+
+    [Fact]
+    public void Validate_counts_eleks_as_an_enabled_source()
+    {
+        var options = EleksConfig();
+        options.Sources.Dou.Enabled = false;
+        options.Sources.Jooble.Enabled = false;
+        options.Sources.Djinni.Enabled = false;
 
         Assert.True(Validator.Validate(null, options).Succeeded);
     }

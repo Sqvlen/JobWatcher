@@ -34,8 +34,9 @@ public class VacancyFilterTests
         string? location = null,
         string? remoteRestrictedTo = null,
         int? minYearsExperience = null,
-        bool isJunior = false) => new(
-        Source: VacancySource.Dou,
+        bool isJunior = false,
+        VacancySource source = VacancySource.Dou) => new(
+        Source: source,
         SourceId: "1",
         Title: title,
         Company: "Acme",
@@ -384,5 +385,38 @@ public class VacancyFilterTests
     public void Salary_does_not_rescue_a_vacancy_rejected_by_other_rules()
     {
         Assert.False(FilterWithMinSalary.Matches(MakeVacancy(title: "Java Developer", salary: "$9000-10000")));
+    }
+
+    // ---- Eleks: the customer wants "Remote or Ukraine" from it, without cities ----
+
+    [Theory]
+    [InlineData("Ukraine")]
+    [InlineData("Lviv, Ukraine")]
+    [InlineData("Ternopil, Ivano-Frankivsk, Lviv")]
+    public void An_eleks_vacancy_passes_whatever_its_places_are_because_its_own_list_chose_them(string location)
+    {
+        var vacancy = MakeVacancy(workMode: WorkMode.Unknown, location: location, source: VacancySource.Eleks);
+
+        Assert.True(Filter.Matches(vacancy));
+    }
+
+    [Theory]
+    [InlineData(VacancySource.Dou)]
+    [InlineData(VacancySource.Djinni)]
+    [InlineData(VacancySource.Jooble)]
+    [InlineData(VacancySource.JobsPipe)]
+    public void The_same_places_are_rejected_for_every_other_source(VacancySource source)
+    {
+        var vacancy = MakeVacancy(workMode: WorkMode.Unknown, location: "Lviv, Ukraine", source: source);
+
+        Assert.False(Filter.Matches(vacancy));
+    }
+
+    [Fact]
+    public void An_eleks_vacancy_still_has_to_fit_the_rest_of_the_profile()
+    {
+        Assert.False(Filter.Matches(MakeVacancy(title: "Java Developer", location: "Ukraine", workMode: WorkMode.Unknown, source: VacancySource.Eleks)));
+        Assert.False(Filter.Matches(MakeVacancy(location: "Ukraine", workMode: WorkMode.Unknown, isJunior: true, source: VacancySource.Eleks)));
+        Assert.False(Filter.Matches(MakeVacancy(location: "Ukraine", workMode: WorkMode.Unknown, minYearsExperience: 1, source: VacancySource.Eleks)));
     }
 }

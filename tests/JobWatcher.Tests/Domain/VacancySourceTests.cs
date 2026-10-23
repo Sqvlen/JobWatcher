@@ -14,6 +14,7 @@ public sealed class VacancySourceTests
         Assert.Equal(3, (int)VacancySource.Jooble);
         Assert.Equal(4, (int)VacancySource.LinkedIn);
         Assert.Equal(5, (int)VacancySource.JobsPipe);
+        Assert.Equal(6, (int)VacancySource.Eleks);
     }
 
     [Fact]
@@ -31,6 +32,7 @@ public sealed class VacancySourceTests
     [InlineData(VacancySource.Jooble, "Jooble")]
     [InlineData(VacancySource.LinkedIn, "LinkedIn")]
     [InlineData(VacancySource.JobsPipe, "JobsPipe")]
+    [InlineData(VacancySource.Eleks, "Eleks")]
     public void Display_name_is_the_text_the_message_shows(VacancySource source, string expected)
     {
         Assert.Equal(expected, source.DisplayName());

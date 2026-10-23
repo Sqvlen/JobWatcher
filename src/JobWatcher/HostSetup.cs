@@ -16,6 +16,38 @@ internal static partial class HostSetup
         new() { Args = args, ContentRootPath = AppContext.BaseDirectory };
 
     /// <summary>
+    /// The settings of this machine, secrets included, next to appsettings.json. Git leaves it out (.gitignore) and so does
+    /// the Docker image (.dockerignore). The customer's qbeauty-ua reads a file of the same name in the same way.
+    /// </summary>
+    public const string LocalSettingsFile = "appsettings.Local.json";
+
+    /// <summary>
+    /// Adds <see cref="LocalSettingsFile"/>, when there is one, as the last source, so it overrides every source added
+    /// before it. It is read once: a change takes effect after a restart, as with the vault.
+    /// </summary>
+    public static IHostApplicationBuilder AddLocalSettings(this IHostApplicationBuilder builder)
+    {
+        builder.Configuration.AddJsonFile(LocalSettingsFile, optional: true, reloadOnChange: false);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds the vault (by <paramref name="addVault"/>) and the local settings so that the local file wins over the vault,
+    /// and still sets the vault's address: the vault reads <c>KeyVault:VaultUri</c> from the settings built before it, so
+    /// the file is read once before it, for that address, and once after it, for its priority.
+    /// </summary>
+    public static IHostApplicationBuilder AddVaultAndLocalSettings(
+        this IHostApplicationBuilder builder, Action<IHostApplicationBuilder> addVault)
+    {
+        builder.AddLocalSettings();
+        addVault(builder);
+        builder.AddLocalSettings();
+
+        return builder;
+    }
+
+    /// <summary>
     /// The text shown to the user when a setting has a value that cannot be converted to the setting's type (for
     /// example <c>JobWatcher__PollIntervalMinutes=abc</c>); null when <paramref name="exception"/> is not such a
     /// failure. The text names the environment variable but never contains the value, which might be a secret put

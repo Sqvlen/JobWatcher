@@ -7,8 +7,9 @@ var builder = Host.CreateApplicationBuilder(HostSetup.Settings(args));
 try
 {
     // Azure Key Vault (when KeyVault__VaultUri is set) goes on top of the settings read so far, and before the services
-    // are registered, because registering them binds the options.
-    builder.AddAzureKeyVault();
+    // are registered, because registering them binds the options. The local settings file (appsettings.Local.json) goes
+    // on top of the vault, so it has the last word; it is also read before the vault, which takes its address from it.
+    builder.AddVaultAndLocalSettings(vault => vault.AddAzureKeyVault());
 
     // Inside the try: registering the services already binds the options, which fails on a value of the wrong type.
     builder.Services.AddJobWatcher(builder.Configuration);

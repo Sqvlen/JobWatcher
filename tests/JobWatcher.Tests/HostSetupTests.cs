@@ -30,6 +30,41 @@ public sealed class HostSetupTests
             Path.TrimEndingDirectorySeparator(builder.Environment.ContentRootPath));
     }
 
+    // ---- appsettings.Local.json: the settings of this machine, secrets included (git and the image leave it out) ----
+
+    [Fact]
+    public void The_local_settings_file_overrides_the_sources_before_it_and_leaves_the_rest()
+    {
+        TempContentRoot.WithLocalFile("""{"JobWatcher":{"Telegram":{"ChatId":"-100777"},"Sources":{"Jooble":{"Enabled":false}}}}""", builder =>
+        {
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JobWatcher:Telegram:ChatId"] = "42",
+                ["JobWatcher:Sources:Jooble:Enabled"] = "true",
+                ["JobWatcher:DataDir"] = "./data",
+            });
+
+            builder.AddLocalSettings();
+
+            Assert.Equal("-100777", builder.Configuration["JobWatcher:Telegram:ChatId"]);
+            Assert.Equal("False", builder.Configuration["JobWatcher:Sources:Jooble:Enabled"]);
+            Assert.Equal("./data", builder.Configuration["JobWatcher:DataDir"]);
+        });
+    }
+
+    [Fact]
+    public void A_missing_local_settings_file_changes_nothing()
+    {
+        TempContentRoot.WithLocalFile(null, builder =>
+        {
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["JobWatcher:Telegram:ChatId"] = "42" });
+
+            builder.AddLocalSettings();
+
+            Assert.Equal("42", builder.Configuration["JobWatcher:Telegram:ChatId"]);
+        });
+    }
+
     [Theory]
     [InlineData("JobWatcher:PollIntervalMinutes", "JobWatcher__PollIntervalMinutes")]
     [InlineData("JobWatcher:Sources:Dou:Enabled", "JobWatcher__Sources__Dou__Enabled")]

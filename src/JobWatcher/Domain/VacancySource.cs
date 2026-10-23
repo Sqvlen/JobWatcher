@@ -9,6 +9,7 @@ public enum VacancySource
     Jooble = 3,
     LinkedIn = 4,
     JobsPipe = 5,
+    Eleks = 6,
 }
 
 public static class VacancySourceExtensions
@@ -22,6 +23,7 @@ public static class VacancySourceExtensions
         VacancySource.Jooble => "Jooble",
         VacancySource.LinkedIn => "LinkedIn",
         VacancySource.JobsPipe => "JobsPipe",
+        VacancySource.Eleks => "Eleks",
         _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown vacancy source."),
     };
 

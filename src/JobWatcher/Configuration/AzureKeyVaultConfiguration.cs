@@ -15,8 +15,10 @@ internal static class AzureKeyVaultConfiguration
 
     /// <summary>
     /// Reads <c>KeyVault:VaultUri</c> from the configuration built so far; when it is set, adds the vault as the last
-    /// source, so its values override appsettings.json, the Development file, the environment and the command line.
-    /// The secrets are read once, here; a rotated secret takes effect after a restart.
+    /// source, so its values override appsettings.json, the Development file, the environment and the command line
+    /// (only the local settings file, appsettings.Local.json, goes on top of it: see
+    /// <see cref="HostSetup.AddVaultAndLocalSettings"/>). The secrets are read once, here; a rotated secret takes
+    /// effect after a restart.
     /// </summary>
     /// <exception cref="KeyVaultLoadException">The URI is not an absolute https URL, or the vault could not be read.</exception>
     public static IHostApplicationBuilder AddAzureKeyVault(this IHostApplicationBuilder builder)

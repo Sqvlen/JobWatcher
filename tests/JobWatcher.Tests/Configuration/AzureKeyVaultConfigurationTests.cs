@@ -213,6 +213,55 @@ public sealed class AzureKeyVaultConfigurationTests
         Assert.Equal(2, vault.PagesListed);
     }
 
+    // ---- with appsettings.Local.json ----
+
+    // The same steps Program.cs takes, with the fake vault in place of the real one.
+    private static void AddVaultAndLocalSettings(HostApplicationBuilder builder, FakeVault vault) =>
+        builder.AddVaultAndLocalSettings(vaultStep =>
+            AzureKeyVaultConfiguration.AddAzureKeyVault(vaultStep.Configuration, vault.CreateClient, TextWriter.Null));
+
+    // The vault reads its address from the settings built before it, so a Local file written after the vault alone
+    // would leave the address in it unseen, and the vault would silently not be used.
+    [Fact]
+    public void The_vault_address_may_be_set_in_the_local_settings_file()
+    {
+        var vault = new FakeVault(forbidden: false) { Secrets = { ["JobWatcher--Telegram--BotToken"] = ("123456:VAULT-TOKEN", true) } };
+
+        TempContentRoot.WithLocalFile($$$"""{"KeyVault":{"VaultUri":"{{{VaultUri}}}"}}""", builder =>
+        {
+            AddVaultAndLocalSettings(builder, vault);
+
+            Assert.Equal("123456:VAULT-TOKEN", builder.Configuration["JobWatcher:Telegram:BotToken"]);
+        });
+    }
+
+    [Fact]
+    public void The_local_settings_file_wins_over_the_vault_and_over_the_sources_before_it_and_the_vault_still_fills_the_gaps()
+    {
+        var vault = new FakeVault(forbidden: false)
+        {
+            Secrets =
+            {
+                ["JobWatcher--Telegram--BotToken"] = ("123456:VAULT-TOKEN", true),
+                ["JobWatcher--Telegram--ChatId"] = ("-100777", true),
+            },
+        };
+        var local = $$$"""{"KeyVault":{"VaultUri":"{{{VaultUri}}}"},"JobWatcher":{"Telegram":{"ChatId":"-100LOCAL"},"DataDir":"/local"}}""";
+
+        TempContentRoot.WithLocalFile(local, builder =>
+        {
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["JobWatcher:DataDir"] = "./data" });
+
+            AddVaultAndLocalSettings(builder, vault);
+
+            // Local beats the vault and the sources before it ...
+            Assert.Equal("-100LOCAL", builder.Configuration["JobWatcher:Telegram:ChatId"]);
+            Assert.Equal("/local", builder.Configuration["JobWatcher:DataDir"]);
+            // ... and what it does not set still comes from the vault.
+            Assert.Equal("123456:VAULT-TOKEN", builder.Configuration["JobWatcher:Telegram:BotToken"]);
+        });
+    }
+
     // ---- fakes ----
 
     /// <summary>A Key Vault REST service in memory: the authentication challenge, the list of secrets and their values.</summary>

@@ -16,7 +16,8 @@ namespace JobWatcher.Watching;
 /// One polling pass over all sources. Per source: fetch, drop invalid and repeated vacancies, then either
 /// remember everything silently (first run) or announce the new vacancies that fit the profile, and log one
 /// summary line with the counts (not on the first run of a source that returned vacancies, which has its own line,
-/// nor when the fetch failed). A source that is also an <see cref="IVacancyEnricher"/> has the details of its new
+/// nor when the fetch failed). A source that <see cref="IVacancySource.AnnouncesExistingOnFirstRun"/> has no silent
+/// first run: its first fetch is announced like any other. A source that is also an <see cref="IVacancyEnricher"/> has the details of its new
 /// vacancies read before the profile filter sees them, a limited number per cycle (never on the first run).
 /// </summary>
 /// <remarks>
@@ -110,7 +111,7 @@ public sealed class WatchCycle(
             return true;
         }
 
-        if (!await store.HasAnyAsync(source.Source, ct))
+        if (!source.AnnouncesExistingOnFirstRun && !await store.HasAnyAsync(source.Source, ct))
         {
             await store.AddAsync(source.Source, vacancies.Select(v => v.SourceId), ct);
             log.LogInformation("First run of {Source}: {Count} existing vacancies marked as seen", source.Source.DisplayName(), vacancies.Count);

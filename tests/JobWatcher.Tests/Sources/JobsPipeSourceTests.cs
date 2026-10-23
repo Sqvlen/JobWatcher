@@ -99,7 +99,8 @@ public sealed class JobsPipeSourceTests
         };
         var jobsPipe = settings.Sources.JobsPipe;
         jobsPipe.BaseUrl = baseUrl ?? jobsPipe.BaseUrl;
-        jobsPipe.MinFetchIntervalMinutes = minFetchIntervalMinutes ?? jobsPipe.MinFetchIntervalMinutes;
+        // The tests of the interval run on an hour, whatever the default is: ShippedDefaultsTests pins the default itself.
+        jobsPipe.MinFetchIntervalMinutes = minFetchIntervalMinutes ?? 60;
         jobsPipe.MaxAgeDays = maxAgeDays ?? jobsPipe.MaxAgeDays;
         jobsPipe.PageSize = pageSize ?? jobsPipe.PageSize;
 

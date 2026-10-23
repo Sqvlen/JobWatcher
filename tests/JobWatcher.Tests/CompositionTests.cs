@@ -37,6 +37,7 @@ public sealed class CompositionTests
     private const string JoobleClient = nameof(JoobleSource);
     private const string DjinniClient = nameof(DjinniSource);
     private const string JobsPipeClient = nameof(JobsPipeSource);
+    private const string EleksClient = nameof(EleksSource);
 
     private static readonly string DouFixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "dou-dotnet.xml");
     private static readonly string DjinniFixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "djinni-dotnet.xml");
@@ -71,6 +72,7 @@ public sealed class CompositionTests
         ["JobWatcher:Sources:Jooble:Enabled"] = "true",
         ["JobWatcher:Sources:Jooble:ApiKey"] = JoobleKey,
         ["JobWatcher:Sources:Djinni:Enabled"] = "false",
+        ["JobWatcher:Sources:Eleks:Enabled"] = "false",
     };
 
     // What users get: the shipped appsettings.json with the secrets and the test's own settings on top.
@@ -106,13 +108,14 @@ public sealed class CompositionTests
         services.AddHttpClient(clientName).ConfigurePrimaryHttpMessageHandler(() => handler);
 
     private static Dictionary<string, string?> WithSources(
-        string dataDir, bool dou, bool jooble, bool djinni = false, bool linkedIn = false)
+        string dataDir, bool dou, bool jooble, bool djinni = false, bool linkedIn = false, bool eleks = false)
     {
         var settings = ValidSettings(dataDir);
         settings["JobWatcher:Sources:Dou:Enabled"] = dou.ToString();
         settings["JobWatcher:Sources:Jooble:Enabled"] = jooble.ToString();
         settings["JobWatcher:Sources:Djinni:Enabled"] = djinni.ToString();
         settings["JobWatcher:Sources:LinkedIn:Enabled"] = linkedIn.ToString();
+        settings["JobWatcher:Sources:Eleks:Enabled"] = eleks.ToString();
 
         return settings;
     }
@@ -273,7 +276,7 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public async Task Shipped_config_runs_on_dou_and_djinni_with_only_the_telegram_settings()
+    public async Task Shipped_config_runs_on_dou_djinni_and_eleks_with_only_the_telegram_settings()
     {
         var settings = new Dictionary<string, string?>
         {
@@ -283,7 +286,9 @@ public sealed class CompositionTests
         await using var provider = BuildProvider(settings);
 
         Assert.IsType<WatchCycle>(provider.GetRequiredService<IWatchCycle>());
-        Assert.Equal([VacancySource.Dou, VacancySource.Djinni], provider.GetServices<IVacancySource>().Select(source => source.Source));
+        Assert.Equal(
+            [VacancySource.Dou, VacancySource.Djinni, VacancySource.Eleks],
+            provider.GetServices<IVacancySource>().Select(source => source.Source));
     }
 
     [Fact]
@@ -298,6 +303,7 @@ public sealed class CompositionTests
         Assert.Null(provider.GetService<DouRssSource>());
         Assert.Null(provider.GetService<JoobleSource>());
         Assert.Null(provider.GetService<DjinniSource>());
+        Assert.Null(provider.GetService<EleksSource>());
     }
 
     [Fact]
@@ -440,10 +446,10 @@ public sealed class CompositionTests
     [Fact]
     public async Task Http_clients_have_a_30_second_timeout()
     {
-        await using var provider = BuildProvider(WithSources(NewTempDir(), dou: true, jooble: true, djinni: true));
+        await using var provider = BuildProvider(WithSources(NewTempDir(), dou: true, jooble: true, djinni: true, eleks: true));
         var factory = provider.GetRequiredService<IHttpClientFactory>();
 
-        foreach (var client in new[] { TelegramClient, DouClient, JoobleClient, DjinniClient })
+        foreach (var client in new[] { TelegramClient, DouClient, JoobleClient, DjinniClient, EleksClient })
         {
             Assert.Equal(TimeSpan.FromSeconds(30), factory.CreateClient(client).Timeout);
         }
@@ -534,6 +540,8 @@ public sealed class CompositionTests
         var settings = WithSources(dataDir, dou: false, jooble: false);
         settings["JobWatcher:Sources:JobsPipe:Enabled"] = "true";
         settings["JobWatcher:Sources:JobsPipe:ApiKey"] = JobsPipeKey;
+        // The end-to-end test passes an hour on the clock between two searches, whatever the shipped interval is.
+        settings["JobWatcher:Sources:JobsPipe:MinFetchIntervalMinutes"] = "60";
 
         return settings;
     }
@@ -656,6 +664,134 @@ public sealed class CompositionTests
             Assert.Single(telegram.Requests);
             Assert.Equal(3, jobsPipe.Requests.Count);
             Assert.True(await provider.GetRequiredService<ISeenStore>().ContainsAsync(VacancySource.JobsPipe, "new-1", CancellationToken.None));
+        }
+        finally
+        {
+            DeleteIfExists(dataDir);
+        }
+    }
+
+    // ---- Eleks ----
+
+    private const string EleksListUrl = "https://careers.eleks.com/vacancies/?technology=21,27&location=206,98";
+    private const string NewEleksVacancyLink = "https://careers.eleks.com/vacancies/senior-net-developer-101/";
+
+    private static string EleksList(params string[] cards) =>
+        "<html><body><div class=\"vacancies-list\">" + string.Concat(cards) + "</div></body></html>";
+
+    private static string EleksCard(string slug, string title, string location) =>
+        $"<a class=\"vacancy-item\" href=\"https://careers.eleks.com/vacancies/{slug}/\">"
+        + $"<div class=\"vacancy-item__title\">{title}</div><div class=\"vacancy-item__location\">{location}</div>"
+        + "<div class=\"vacancy-item__technology\">.NET</div></a>";
+
+    [Fact]
+    public async Task Eleks_is_one_instance_that_is_both_the_source_and_the_reader_of_its_vacancy_pages()
+    {
+        await using var provider = BuildProvider(WithSources(NewTempDir(), dou: false, jooble: false, eleks: true));
+
+        var source = Assert.Single(provider.GetServices<IVacancySource>());
+
+        var eleks = Assert.IsType<EleksSource>(source);
+        Assert.IsAssignableFrom<IVacancyEnricher>(source);
+        Assert.True(eleks.IsEnabled);
+        Assert.Equal(15, eleks.MaxPerCycle);
+        // The source remembers when it last fetched the list, so every cycle must get the same one.
+        Assert.Same(source, Assert.Single(provider.GetServices<IVacancySource>()));
+    }
+
+    // Nothing the site sets may travel with a later request, and a redirect must not take a request away from
+    // careers.eleks.com: the client answers a redirect with a failure instead.
+    [Fact]
+    public async Task The_eleks_client_keeps_no_cookies_and_follows_no_redirects()
+    {
+        await using var provider = BuildProvider(WithSources(NewTempDir(), dou: false, jooble: false, eleks: true));
+        var options = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>().Get(EleksClient);
+        using var sockets = new SocketsHttpHandler();
+        using var classic = new HttpClientHandler();
+
+        foreach (HttpMessageHandler handler in new HttpMessageHandler[] { sockets, classic })
+        {
+            var builder = new InspectingHandlerBuilder(provider, handler) { Name = EleksClient };
+            foreach (var action in options.HttpMessageHandlerBuilderActions)
+            {
+                action(builder);
+            }
+        }
+
+        Assert.False(sockets.UseCookies);
+        Assert.False(classic.UseCookies);
+        Assert.False(sockets.AllowAutoRedirect);
+        Assert.False(classic.AllowAutoRedirect);
+    }
+
+    [Fact]
+    public async Task End_to_end_the_first_eleks_vacancy_after_an_empty_list_is_announced_once_with_its_requirements_and_without_a_city_of_the_profile()
+    {
+        var dataDir = NewTempDir();
+        try
+        {
+            var telegram = TelegramAccepting();
+
+            // As on the real site today: nothing is listed yet.
+            var list = EleksList();
+            var page = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "eleks-vacancy-page.html"));
+            var eleks = new StubHandler(request => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    request.RequestUri!.AbsolutePath == "/vacancies/" ? list : page, Encoding.UTF8, "text/html"),
+            });
+            // The source's clock: the day between two fetches and the gap before a page request are passed on it, not waited for.
+            var clock = new ManualTimeProvider();
+            await using var provider = BuildProvider(WithSources(dataDir, dou: false, jooble: false, eleks: true), services =>
+            {
+                ReplacePrimaryHandler(services, TelegramClient, telegram);
+                ReplacePrimaryHandler(services, EleksClient, eleks);
+                services.AddSingleton<TimeProvider>(clock);
+            });
+            var cycle = provider.GetRequiredService<IWatchCycle>();
+
+            // Cycle 1: the list is empty; the user gets nothing and no page is read.
+            await cycle.RunOnceAsync(CancellationToken.None);
+            Assert.Empty(telegram.Requests);
+            Assert.Single(eleks.Requests);
+
+            // Cycle 2, a day later: the first vacancy ever listed appears, in Lviv, which is not the profile's city; Eleks's
+            // own list chose it, so it is announced (not swallowed as a baseline), with the requirements of its page.
+            clock.Advance(TimeSpan.FromDays(1));
+            list = EleksList(EleksCard("senior-net-developer-101", "Senior .NET Developer", "Lviv, Ukraine"));
+            await cycle.RunOnceAsync(CancellationToken.None);
+            var sent = Assert.Single(telegram.Requests);
+            using var body = JsonDocument.Parse(sent.Body);
+            var text = body.RootElement.GetProperty("text").GetString()!;
+            Assert.Equal(
+                string.Join(
+                    '\n',
+                    "🆕 <b>Senior .NET Developer</b>",
+                    "🏢 ELEKS",
+                    "💰 не вказано",
+                    "📍 Lviv, Ukraine",
+                    "",
+                    "📋 Вимоги:",
+                    "• 7+ years of experience in software development",
+                    "• 4+ years of experience in .NET",
+                    "• Experience with Azure &amp; Docker",
+                    "• Advanced level of English",
+                    "",
+                    $"🔗 <a href=\"{NewEleksVacancyLink}\">Відкрити вакансію (Eleks)</a>"),
+                text);
+
+            // Cycle 3, another day later: the same list; the vacancy was recorded after it was sent, so nothing goes out
+            // and its page is not read again.
+            clock.Advance(TimeSpan.FromDays(1));
+            await cycle.RunOnceAsync(CancellationToken.None);
+            Assert.Single(telegram.Requests);
+            Assert.Equal(
+                [EleksListUrl, EleksListUrl, NewEleksVacancyLink, EleksListUrl],
+                eleks.Requests.Select(request => request.Url));
+
+            // The page request came the configured 2 seconds after the list request of its cycle.
+            Assert.Equal([TimeSpan.FromSeconds(2)], clock.Waits);
+            Assert.True(await provider.GetRequiredService<ISeenStore>().ContainsAsync(VacancySource.Eleks, "senior-net-developer-101", CancellationToken.None));
         }
         finally
         {

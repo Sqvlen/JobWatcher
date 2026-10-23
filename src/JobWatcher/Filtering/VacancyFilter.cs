@@ -23,7 +23,12 @@ public sealed class VacancyFilter(ProfileOptions profile)
         !v.IsJunior && (v.MinYearsExperience is not { } years || years >= profile.MinYearsExperience);
 
     private bool MatchesLocation(Vacancy v) =>
-        v.WorkMode == WorkMode.Remote ? IsRemoteOpenToCandidate(v) : IsInTargetCity(v);
+        v.WorkMode == WorkMode.Remote ? IsRemoteOpenToCandidate(v) : PlaceIsChosenBySource(v) || IsInTargetCity(v);
+
+    // The customer wants Eleks vacancies that are remote or in Ukraine, with no cities, and asks Eleks for exactly
+    // those in the address of its list (docs/sources/eleks.md): the places of its vacancies are not held against the
+    // profile's cities. Every other rule of the profile still applies.
+    private static bool PlaceIsChosenBySource(Vacancy v) => v.Source == VacancySource.Eleks;
 
     private bool IsRemoteOpenToCandidate(Vacancy v) =>
         string.IsNullOrWhiteSpace(v.RemoteRestrictedTo)

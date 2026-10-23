@@ -46,12 +46,41 @@ public class ShippedDefaultsTests
         Assert.False(options.Sources.LinkedIn.Enabled);
         Assert.False(options.Sources.JobsPipe.Enabled);
         Assert.Equal("https://api.jobspipe.dev", options.Sources.JobsPipe.BaseUrl);
-        Assert.Equal(60, options.Sources.JobsPipe.MinFetchIntervalMinutes);
+        // Once a day: the free plan's request quota is not documented, and what a search costs does not depend on how often it runs.
+        Assert.Equal(1440, options.Sources.JobsPipe.MinFetchIntervalMinutes);
         Assert.Equal(14, options.Sources.JobsPipe.MaxAgeDays);
         Assert.Equal(25, options.Sources.JobsPipe.PageSize);
         // The excluded boards are listed in the file, not in the class: a configured list would otherwise be appended
-        // to a pre-filled array, and the user could never remove LinkedIn from it.
-        Assert.Equal(["linkedin"], options.Sources.JobsPipe.ExcludedSources);
+        // to a pre-filled array, and the user could never remove LinkedIn from it. Workday, Greenhouse and Ashby are
+        // left out at the customer's request (2026-10-23); these are JobsPipe's own spellings of the names.
+        Assert.Equal(["linkedin", "workday", "greenhouse", "ashby"], options.Sources.JobsPipe.ExcludedSources);
+        // Eleks needs no key, so it is on; its list is .NET (technology 21,27) in Ukraine or remote (location 206,98).
+        Assert.True(options.Sources.Eleks.Enabled);
+        Assert.Equal("https://careers.eleks.com/vacancies/?technology=21,27&location=206,98", options.Sources.Eleks.ListUrl);
+        Assert.True(options.Sources.Eleks.ReadVacancyPages);
+        Assert.Equal(2, options.Sources.Eleks.PageRequestDelaySeconds);
+        Assert.Equal(15, options.Sources.Eleks.MaxPagesPerCycle);
+        // The day between two fetches is written out in the file: the user sees it, and it is the knob to change.
+        Assert.Equal("1440", configuration["JobWatcher:Sources:Eleks:MinFetchIntervalMinutes"]);
+    }
+
+    // Characterisation of how lists merge, because the customer's own Local file lists only "linkedin": a list from a
+    // later source replaces the shipped one index by index and does not cut it short, so the three added names stay.
+    [Fact]
+    public void A_shorter_excluded_list_from_a_later_source_overlays_the_shipped_one_by_index()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile(ShippedSettingsFile, optional: false)
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JobWatcher:Sources:JobsPipe:ExcludedSources:0"] = "linkedin",
+            })
+            .Build();
+
+        var options = configuration.GetSection(WatcherOptions.SectionName).Get<WatcherOptions>();
+
+        Assert.Equal(["linkedin", "workday", "greenhouse", "ashby"], options!.Sources.JobsPipe.ExcludedSources);
     }
 
     [Fact]

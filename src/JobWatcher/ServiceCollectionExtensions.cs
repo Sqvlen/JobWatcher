@@ -106,6 +106,18 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IVacancySource>(sp => sp.GetRequiredService<JobsPipeSource>());
         }
 
+        // The Eleks list address carries no secret (only a filter), so the default HTTP logging stays on. Like Djinni's, its
+        // client keeps no cookies and follows no redirects (only careers.eleks.com pages are requested; the source asks
+        // for the address a page redirect would lead to). The single instance is also the reader of the vacancy pages
+        // (IVacancyEnricher), and remembers when it last fetched the list (once a day) and last requested a page.
+        if (sources.Eleks.Enabled)
+        {
+            services
+                .AddHttpClient<EleksSource>(client => client.Timeout = HttpTimeout)
+                .ConfigurePrimaryHttpMessageHandler((handler, _) => AnonymousAndNoRedirects(handler));
+            services.AddSingleton<IVacancySource>(sp => sp.GetRequiredService<EleksSource>());
+        }
+
         // LinkedIn has no route that is lawful without the customer's own account (docs/sources/linkedin.md), so there
         // is no adapter. Enabling it registers a stand-in that makes every cycle report "not connected", so the user
         // is told once in Telegram instead of the setting doing nothing.

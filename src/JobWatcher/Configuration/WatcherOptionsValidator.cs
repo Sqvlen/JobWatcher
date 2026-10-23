@@ -94,9 +94,9 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
 
         // LinkedIn counts as enabled but is not offered as a fix: it only reports that it is not connected.
         var sources = o.Sources;
-        if (!sources.Dou.Enabled && !sources.Jooble.Enabled && !sources.Djinni.Enabled && !sources.JobsPipe.Enabled && !sources.LinkedIn.Enabled)
+        if (!sources.Dou.Enabled && !sources.Jooble.Enabled && !sources.Djinni.Enabled && !sources.JobsPipe.Enabled && !sources.Eleks.Enabled && !sources.LinkedIn.Enabled)
         {
-            failures.Add("No job source is enabled. Set at least one of JobWatcher__Sources__Dou__Enabled, JobWatcher__Sources__Jooble__Enabled, JobWatcher__Sources__Djinni__Enabled, JobWatcher__Sources__JobsPipe__Enabled to true.");
+            failures.Add("No job source is enabled. Set at least one of JobWatcher__Sources__Dou__Enabled, JobWatcher__Sources__Jooble__Enabled, JobWatcher__Sources__Djinni__Enabled, JobWatcher__Sources__JobsPipe__Enabled, JobWatcher__Sources__Eleks__Enabled to true.");
         }
 
         if (sources.Dou.Enabled && !IsAbsoluteHttpUrl(sources.Dou.FeedUrl))
@@ -141,6 +141,7 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
         }
 
         AddJobsPipeFailures(failures, sources.JobsPipe);
+        AddEleksFailures(failures, sources.Eleks);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
@@ -184,6 +185,41 @@ public sealed class WatcherOptionsValidator : IValidateOptions<WatcherOptions>
 
         AddBlankEntryFailures(failures, jobsPipe.ExcludedSources, "JobWatcher__Sources__JobsPipe__ExcludedSources");
     }
+
+    private static void AddEleksFailures(List<string> failures, EleksOptions eleks)
+    {
+        if (!eleks.Enabled)
+        {
+            return;
+        }
+
+        // The source requests nothing but pages of this one site, so a list address elsewhere is a mistake.
+        if (!IsHttpsUrlOnHost(eleks.ListUrl, EleksOptions.Host))
+        {
+            failures.Add($"Eleks is enabled but its list URL is not an absolute https URL on {EleksOptions.Host}. Set the environment variable JobWatcher__Sources__Eleks__ListUrl (for example https://{EleksOptions.Host}/vacancies/?technology=21,27&location=206,98), or disable Eleks with JobWatcher__Sources__Eleks__Enabled=false.");
+        }
+
+        if (eleks.MinFetchIntervalMinutes < 1)
+        {
+            failures.Add($"Eleks minimum fetch interval must be at least 1 minute (got {eleks.MinFetchIntervalMinutes}). Fix the environment variable JobWatcher__Sources__Eleks__MinFetchIntervalMinutes.");
+        }
+
+        // The list is requested page by page too, so the gap counts even when no vacancy page is read.
+        if (eleks.PageRequestDelaySeconds < 1)
+        {
+            failures.Add($"Eleks page request delay must be at least 1 second (got {eleks.PageRequestDelaySeconds}): the list and the vacancy pages are requested one by one and politely apart. Fix the environment variable JobWatcher__Sources__Eleks__PageRequestDelaySeconds.");
+        }
+
+        if (eleks.ReadVacancyPages && eleks.MaxPagesPerCycle < 1)
+        {
+            failures.Add($"Eleks max pages per cycle must be at least 1 (got {eleks.MaxPagesPerCycle}), or no new Eleks vacancy would ever be announced. Fix the environment variable JobWatcher__Sources__Eleks__MaxPagesPerCycle (or stop reading vacancy pages with JobWatcher__Sources__Eleks__ReadVacancyPages=false).");
+        }
+    }
+
+    private static bool IsHttpsUrlOnHost(string value, string host) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && uri.Host.Equals(host, StringComparison.OrdinalIgnoreCase);
 
     // On Unix a path such as "/vacancies/feeds/" parses as an absolute file URI, hence the scheme check.
     private static bool IsAbsoluteHttpUrl(string value) =>

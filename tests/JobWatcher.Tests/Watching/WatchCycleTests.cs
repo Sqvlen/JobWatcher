@@ -53,6 +53,8 @@ public sealed class WatchCycleTests
     {
         public VacancySource Source => source;
 
+        public bool AnnouncesExistingOnFirstRun { get; set; }
+
         public List<Vacancy> Vacancies { get; set; } = [];
 
         public Exception? Failure { get; set; }
@@ -269,6 +271,41 @@ public sealed class WatchCycleTests
 
         Assert.Empty(h.Notifier.Sent);
         Assert.Equal(["1", "2", "3"], h.Store.SeenIds(VacancySource.Dou));
+    }
+
+    // A source whose list is already narrowed to what the user wants (Eleks, by the filters in its address) is not given a
+    // silent baseline: its existing vacancies are announced like any other.
+    [Fact]
+    public async Task A_source_that_announces_on_first_run_sends_what_its_first_fetch_lists()
+    {
+        var eleks = new FakeSource(VacancySource.Eleks)
+        {
+            AnnouncesExistingOnFirstRun = true,
+            Vacancies = [Matching(VacancySource.Eleks, "1"), NonMatching(VacancySource.Eleks, "2")],
+        };
+        var h = new Harness([eleks]);
+
+        await h.RunAsync();
+
+        Assert.Equal([true, false], [h.Notifier.WasSent(VacancySource.Eleks, "1"), h.Notifier.WasSent(VacancySource.Eleks, "2")]);
+        Assert.Equal(["1", "2"], h.Store.SeenIds(VacancySource.Eleks));
+    }
+
+    // The case this exists for: the filtered list is empty at first (so nothing is stored), and the first vacancy that
+    // ever appears in it must reach the user, not be taken for the baseline.
+    [Fact]
+    public async Task A_source_that_announces_on_first_run_announces_the_first_vacancy_that_follows_an_empty_fetch()
+    {
+        var eleks = new FakeSource(VacancySource.Eleks) { AnnouncesExistingOnFirstRun = true };
+        var h = new Harness([eleks]);
+
+        await h.RunAsync();
+        Assert.Empty(h.Notifier.Sent);
+
+        eleks.Vacancies = [Matching(VacancySource.Eleks, "1")];
+        await h.RunAsync();
+
+        Assert.True(h.Notifier.WasSent(VacancySource.Eleks, "1"));
     }
 
     [Fact]
